@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>力學能守恆動畫</title>
+<style>
+  :root{
+    --bg:#f4f6fa; --card:#ffffff; --ink:#1d2433; --muted:#667085; --line:#dde2ec;
+    --pe:#2b7de9; --ke:#f08c1a; --tot:#2fa84f; --heat:#8a8f98;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;line-height:1.5}
+  .page{max-width:1040px;margin:0 auto;padding:16px}
+  h1{font-size:22px;margin:4px 0 2px}
+  .sub{color:var(--muted);font-size:14px;margin-bottom:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+  canvas{display:block;width:100%;height:auto;border-radius:8px;background:#fff;touch-action:none;cursor:crosshair}
+  .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px 16px;align-items:center}
+  .ctl label{display:flex;justify-content:space-between;font-size:13px;color:var(--muted)}
+  .ctl label b{color:var(--ink);font-weight:600}
+  .ctl input[type=range]{width:100%}
+  .ctl select{width:100%;padding:4px;border-radius:6px;border:1px solid var(--line)}
+  .btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  button{border:1px solid var(--line);background:#fff;color:var(--ink);padding:7px 14px;border-radius:8px;
+    font-size:14px;cursor:pointer}
+  button.primary{background:#2b7de9;border-color:#2b7de9;color:#fff}
+  button:hover{filter:brightness(.96)}
+  .checks{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;margin-top:10px;color:var(--muted)}
+  .live{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
+  .live div{background:#f7f9fc;border:1px solid var(--line);border-radius:8px;padding:6px 10px;text-align:center}
+  .live small{display:block;color:var(--muted);font-size:12px}
+  .live span{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+  .c-pe{color:var(--pe)} .c-ke{color:var(--ke)} .c-tot{color:var(--tot)} .c-heat{color:var(--heat)}
+  .tablewrap{overflow-x:auto}
+  table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums;min-width:760px}
+  th,td{border:1px solid var(--line);padding:5px 8px;text-align:center}
+  thead th{background:#eef2f8}
+  th.grp-pred{background:#e8f0fd} th.grp-meas{background:#fdf1e1}
+  tr.hit td{background:#fff6c9;transition:background .5s}
+  td.dim{color:#aaa}
+  .note{font-size:13px;color:var(--muted)}
+  .formula{display:flex;gap:18px;flex-wrap:wrap;font-size:15px;margin:2px 0 8px}
+  .formula span{background:#f7f9fc;border:1px solid var(--line);border-radius:8px;padding:4px 10px}
+  ul{margin:6px 0 0 18px;padding:0;font-size:14px}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>力學能守恆動畫：位能與動能的轉換</h1>
+  <div class="sub">小球沿無摩擦的軌道滑動（也可加入摩擦力）。觀察每個位置的重力位能 PE、動能 KE 與力學能 E = PE + KE。</div>
+
+  <div class="card">
+    <div class="formula">
+      <span>位能 PE = m·g·h</span>
+      <span>動能 KE = ½·m·v²</span>
+      <span>力學能 E = PE + KE</span>
+      <span>無摩擦時：E 為定值，v = √(2g(h₀ − h))</span>
+    </div>
+    <canvas id="cv" width="1000" height="580"></canvas>
+    <div class="note" style="margin-top:6px">提示：在軌道區域按一下或拖曳，可以改變釋放位置（會自動重置並暫停）。</div>
+  </div>
+
+  <div class="card">
+    <div class="btns">
+      <button id="btnRun" class="primary">▶ 開始</button>
+      <button id="btnStep">單步 +0.1 秒</button>
+      <button id="btnReset">↺ 重置</button>
+      <button id="btnClear">清除實測紀錄</button>
+    </div>
+    <div class="controls">
+      <div class="ctl"><label>質量 m <b><span id="oM">2.0</span> kg</b></label>
+        <input id="sM" type="range" min="0.5" max="5" step="0.5" value="2"></div>
+      <div class="ctl"><label>重力加速度 g <b><span id="oG">9.80</span> m/s²</b></label>
+        <input id="sG" type="range" min="1" max="25" step="0.01" value="9.8"></div>
+      <div class="ctl"><label>星球預設</label>
+        <select id="selG">
+          <option value="9.8" selected>地球 9.8</option>
+          <option value="1.62">月球 1.62</option>
+          <option value="3.71">火星 3.71</option>
+          <option value="24.8">木星 24.8</option>
+        </select></div>
+      <div class="ctl"><label>摩擦係數 μ <b><span id="oMu">0.00</span></b></label>
+        <input id="sMu" type="range" min="0" max="0.3" step="0.01" value="0"></div>
+      <div class="ctl"><label>釋放位置 x <b><span id="oX">1.0</span> m</b></label>
+        <input id="sX" type="range" min="0.3" max="19.7" step="0.1" value="1"></div>
+      <div class="ctl"><label>播放速度 <b><span id="oT">1.0</span>×</b></label>
+        <input id="sT" type="range" min="0.1" max="2" step="0.1" value="1"></div>
+    </div>
+    <div class="checks">
+      <label><input type="checkbox" id="cHeight" checked> 顯示高度線</label>
+      <label><input type="checkbox" id="cVel" checked> 顯示速度箭頭</label>
+      <label><input type="checkbox" id="cLabel" checked> 顯示各標記點預測能量</label>
+      <label><input type="checkbox" id="cGraph" checked> 顯示能量–時間圖</label>
+    </div>
+  </div>
+
+  <div class="card">
+    <b>即時數據</b>
+    <div class="live" style="margin-top:8px">
+      <div><small>時間 t</small><span id="lT">0.00</span> s</div>
+      <div><small>水平位置 x</small><span id="lX">0.0</span> m</div>
+      <div><small>高度 h</small><span id="lH">0.00</span> m</div>
+      <div><small>速率 v</small><span id="lV">0.00</span> m/s</div>
+      <div><small>位能 PE</small><span id="lPE" class="c-pe">0.0</span> J</div>
+      <div><small>動能 KE</small><span id="lKE" class="c-ke">0.0</span> J</div>
+      <div><small>力學能 E</small><span id="lE" class="c-tot">0.0</span> J</div>
+      <div><small>摩擦生熱</small><span id="lQ" class="c-heat">0.0</span> J</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <b>各標記點能量表</b>
+    <span class="note">（預測值以釋放點的力學能計算；實測值在小球經過該點時自動記錄）</span>
+    <div class="tablewrap" style="margin-top:8px">
+      <table>
+        <thead>
+          <tr>
+            <th rowspan="2">位置</th><th rowspan="2">x (m)</th><th rowspan="2">高度 h (m)</th>
+            <th colspan="3" class="grp-pred">預測（理想，無摩擦）</th>
+            <th colspan="4" class="grp-meas">實測（小球經過時）</th>
+          </tr>
+          <tr>
+            <th class="grp-pred">PE (J)</th><th class="grp-pred">KE (J)</th><th class="grp-pred">v (m/s)</th>
+            <th class="grp-meas">PE (J)</th><th class="grp-meas">KE (J)</th><th class="grp-meas">v (m/s)</th><th class="grp-meas">PE+KE (J)</th>
+          </tr>
+        </thead>
+        <tbody id="tb"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <b>觀察與思考</b>
+    <ul>
+      <li>在最低點，位能最小、動能最大；在最高點則相反。PE + KE 的總和有沒有改變？</li>
+      <li>把質量 m 加倍，各點的 PE、KE 如何變化？小球的速率 v 會變嗎？</li>
+      <li>調大摩擦係數 μ，力學能 E 變少，減少的能量去哪裡了？（看「摩擦生熱」）</li>
+      <li>在木星或月球（改變 g）重做一次，同一位置的 PE 與 v 如何改變？</li>
+      <li>用表中 h 與預測 KE 驗算：KE = m·g·(h₀ − h)，並與實測值比較。</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  /* ---------- 畫布設定 ---------- */
+  var W = 1000, H_PX = 580;
+  var cv = document.getElementById("cv");
+  var ctx = cv.getContext("2d");
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = W * dpr; cv.height = H_PX * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  var X0 = 40, BASE = 410, SC = 34, WORLD_W = 20;   // 世界座標(m) → 像素
+
+  /* ---------- 軌道（Hermite 三次插值，C1 連續）---------- */
+  var CP = [[0,11],[2,7.5],[4.5,2],[6.5,0.5],[9,4],[11,6],[13,3],[15,0.8],[17.5,4.5],[20,11]];
+  var n = CP.length, px = [], py = [], mk = [];
+  for (var i = 0; i < n; i++){ px.push(CP[i][0]); py.push(CP[i][1]); }
+  for (i = 0; i < n; i++){
+    if (i === 0) mk.push((py[1]-py[0])/(px[1]-px[0]));
+    else if (i === n-1) mk.push((py[n-1]-py[n-2])/(px[n-1]-px[n-2]));
+    else mk.push((py[i+1]-py[i-1])/(px[i+1]-px[i-1]));
+  }
+  function seg(x){ var k = 0; while (k < n-2 && x > px[k+1]) k++; return k; }
+  function rawH(x){
+    x = Math.max(0, Math.min(WORLD_W, x));
+    var k = seg(x), h = px[k+1]-px[k], t = (x-px[k])/h, t2 = t*t, t3 = t2*t;
+    return (2*t3-3*t2+1)*py[k] + (t3-2*t2+t)*h*mk[k] + (-2*t3+3*t2)*py[k+1] + (t3-t2)*h*mk[k+1];
+  }
+  var OFFSET = (function(){ var m = 1e9; for (var x = 0; x <= WORLD_W; x += 0.01) m = Math.min(m, rawH(x)); return m; })();
+  function H(x){ return rawH(x) - OFFSET; }           // 高度（以軌道最低點為 0）
+  function dH(x){
+    x = Math.max(0, Math.min(WORLD_W, x));
+    var k = seg(x), h = px[k+1]-px[k], t = (x-px[k])/h, t2 = t*t;
+    return ((6*t2-6*t)/h)*py[k] + (3*t2-4*t+1)*mk[k] + ((-6*t2+6*t)/h)*py[k+1] + (3*t2-2*t)*mk[k+1];
+  }
+
+  /* ---------- 標記點 ---------- */
+  var MARK_X = [2, 4.5, 6.5, 9, 11, 13, 15, 17.5];
+  var MARK_N = ["A","B","C","D","E","F","G","H"];
+  var meas = MARK_X.map(function(){ return null; });   // 存實測 v²（每單位）
+
+  /* ---------- 狀態與參數 ---------- */
+  var P = { m: 2, g: 9.8, mu: 0, ts: 1, relx: 1 };
+  var S = { x: 1, v: 0, t: 0, running: false };
+  var e0 = 0;           // 每單位質量的初始力學能 g*h0 (J/kg)
+  var hist = [], lastHist = 0;
+
+  function $(id){ return document.getElementById(id); }
+
+  function resetSim(){
+    S.x = P.relx; S.v = 0; S.t = 0;
+    e0 = P.g * H(P.relx);
+    hist = []; lastHist = -1;
+    pushHist();
+  }
+  function setRunning(r){
+    S.running = r;
+    $("btnRun").textContent = r ? "⏸ 暫停" : "▶ 開始";
+  }
+
+  /* ---------- 物理 ---------- */
+  function subStep(dt){
+    var g = P.g, mu = P.mu;
+    var d = dH(S.x), c = 1/Math.sqrt(1+d*d), s = d*c;
+    var v = S.v - g*s*dt;
+    if (mu > 0){
+      var fr = mu*g*c*dt;
+      if (Math.abs(v) <= fr) v = 0; else v -= (v > 0 ? 1 : -1)*fr;
+    }
+    var xp = S.x, x = xp + v*c*dt;
+    if (x < 0){ x = 0; v = Math.abs(v); }
+    else if (x > WORLD_W){ x = WORLD_W; v = -Math.abs(v); }
+    if (mu === 0){            // 無摩擦：以能量守恆修正數值誤差
+      var k = 2*(e0 - g*H(x));
+      var vm = Math.sqrt(Math.max(0, k));
+      v = (v === 0) ? 0 : (v > 0 ? 1 : -1)*vm;
+    }
+    // 偵測經過標記點
+    for (var j = 0; j < MARK_X.length; j++){
+      var xm = MARK_X[j];
+      if ((xp < xm && x >= xm) || (xp > xm && x <= xm)){
+        meas[j] = v*v;
+        flashRow(j);
+      }
+    }
+    S.x = x; S.v = v;
+  }
+  function advance(dt){
+    var ns = Math.max(1, Math.ceil(dt/0.0008)), h = dt/ns;
+    for (var i = 0; i < ns; i++) subStep(h);
+    S.t += dt;
+    if (S.t - lastHist >= 0.03) pushHist();
+  }
+  function pushHist(){
+    hist.push({ t: S.t, pe: P.g*H(S.x), ke: 0.5*S.v*S.v });
+    lastHist = S.t;
+    while (hist.length > 0 && hist[0].t < S.t - 12) hist.shift();
+  }
+  function cur(){
+    var h = H(S.x), pe = P.m*P.g*h, ke = 0.5*P.m*S.v*S.v, E = pe + ke;
+    var E0 = P.m*e0, Q = Math.max(0, E0 - E);
+    return { h: h, pe: pe, ke: ke, E: E, E0: E0, Q: Q };
+  }
+
+  /* ---------- 表格 ---------- */
+  var tbody = $("tb");
+  var rows = [];
+  (function buildTable(){
+    for (var j = 0; j < MARK_X.length; j++){
+      var tr = document.createElement("tr");
+      tr.innerHTML = "<td><b>" + MARK_N[j] + "</b></td><td>" + MARK_X[j].toFixed(1) + "</td><td></td>" +
+        "<td></td><td></td><td></td><td></td><td></td><td></td><td></td>";
+      tbody.appendChild(tr); rows.push(tr);
+    }
+  })();
+  function updateTable(){
+    for (var j = 0; j < MARK_X.length; j++){
+      var td = rows[j].children, h = H(MARK_X[j]);
+      var pe = P.m*P.g*h, keP = P.m*(e0 - P.g*h);
+      td[2].textContent = h.toFixed(2);
+      td[3].textContent = pe.toFixed(1);
+      if (keP >= 0){
+        td[4].textContent = keP.toFixed(1);
+        td[5].textContent = Math.sqrt(2*keP/P.m).toFixed(2);
+        td[4].className = td[5].className = "";
+      } else {
+        td[4].textContent = "到不了"; td[5].textContent = "—";
+        td[4].className = td[5].className = "dim";
+      }
+      if (meas[j] === null){
+        for (var k = 6; k <= 9; k++){ td[k].textContent = "—"; td[k].className = "dim"; }
+      } else {
+        var ke = 0.5*P.m*meas[j];
+        td[6].textContent = pe.toFixed(1);
+        td[7].textContent = ke.toFixed(1);
+        td[8].textContent = Math.sqrt(meas[j]).toFixed(2);
+        td[9].textContent = (pe + ke).toFixed(1);
+        for (k = 6; k <= 9; k++) td[k].className = "";
+      }
+    }
+  }
+  function flashRow(j){
+    updateTable();
+    rows[j].classList.add("hit");
+    setTimeout(function(){ rows[j].classList.remove("hit"); }, 700);
+  }
+
+  /* ---------- 繪圖 ---------- */
+  function lerp(a,b,t){ return a + (b-a)*t; }
+  function arrow(x1,y1,x2,y2,color){
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    var a = Math.atan2(y2-y1, x2-x1), L = 9;
+    ctx.beginPath(); ctx.moveTo(x2,y2);
+    ctx.lineTo(x2 - L*Math.cos(a-0.4), y2 - L*Math.sin(a-0.4));
+    ctx.lineTo(x2 - L*Math.cos(a+0.4), y2 - L*Math.sin(a+0.4));
+    ctx.closePath(); ctx.fill();
+  }
+  function text(str, x, y, size, color, align, weight){
+    ctx.font = (weight || "400") + " " + size + "px system-ui, 'PingFang TC','Microsoft JhengHei',sans-serif";
+    ctx.fillStyle = color; ctx.textAlign = align || "left"; ctx.fillText(str, x, y);
+  }
+  function sx(x){ return X0 + x*SC; }
+  function sy(h){ return BASE - h*SC; }
+
+  function drawTrack(){
+    // 軌道下方填色
+    ctx.beginPath(); ctx.moveTo(sx(0), BASE + 10);
+    for (var x = 0; x <= WORLD_W + 0.001; x += 0.1) ctx.lineTo(sx(x), sy(H(x)));
+    ctx.lineTo(sx(WORLD_W), BASE + 10); ctx.closePath();
+    var gr = ctx.createLinearGradient(0, BASE - 360, 0, BASE + 10);
+    gr.addColorStop(0, "#d9cfc0"); gr.addColorStop(1, "#b9ad9a");
+    ctx.fillStyle = gr; ctx.fill();
+    // 軌道線
+    ctx.beginPath();
+    for (x = 0; x <= WORLD_W + 0.001; x += 0.1){
+      var X = sx(x), Y = sy(H(x));
+      if (x === 0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y);
+    }
+    ctx.strokeStyle = "#5a4f3f"; ctx.lineWidth = 4; ctx.lineJoin = "round"; ctx.stroke();
+    // 零位能參考線
+    ctx.setLineDash([6,5]); ctx.strokeStyle = "#999"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(X0 - 10, BASE); ctx.lineTo(X0 + WORLD_W*SC + 10, BASE); ctx.stroke();
+    ctx.setLineDash([]);
+    text("h = 0（零位能參考面）", X0 + WORLD_W*SC - 4, BASE + 22, 12, "#777", "right");
+    // 釋放位置旗標
+    var rx = sx(P.relx), ry = sy(H(P.relx));
+    ctx.strokeStyle = "#c0392b"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx, ry - 36); ctx.stroke();
+    ctx.fillStyle = "#c0392b";
+    ctx.beginPath(); ctx.moveTo(rx, ry-36); ctx.lineTo(rx+14, ry-30); ctx.lineTo(rx, ry-24); ctx.fill();
+    text("釋放點", rx + 4, ry - 40, 11, "#c0392b");
+  }
+
+  function drawMarkers(){
+    var showLabel = $("cLabel").checked;
+    for (var j = 0; j < MARK_X.length; j++){
+      var xm = MARK_X[j], h = H(xm), X = sx(xm), Y = sy(h);
+      ctx.beginPath(); ctx.arc(X, Y, 9, 0, 6.283);
+      ctx.fillStyle = "#fff"; ctx.fill();
+      ctx.strokeStyle = "#1d2433"; ctx.lineWidth = 2; ctx.stroke();
+      text(MARK_N[j], X, Y + 4, 11, "#1d2433", "center", "700");
+      if (showLabel){
+        var pe = P.m*P.g*h, ke = P.m*(e0 - P.g*h);
+        text("h=" + h.toFixed(1) + "m", X, Y - 52, 11, "#555", "center");
+        text("PE " + pe.toFixed(0) + " J", X, Y - 39, 11, "#2b7de9", "center", "600");
+        text(ke >= 0 ? ("KE " + ke.toFixed(0) + " J") : "KE 到不了", X, Y - 26, 11,
+             ke >= 0 ? "#d9760a" : "#999", "center", "600");
+      }
+    }
+  }
+
+  function drawBall(c){
+    var d = dH(S.x), k = 1/Math.sqrt(1+d*d), r = 12;
+    var cx0 = sx(S.x), cy0 = sy(c.h);
+    var bx = cx0 - d*k*r, by = cy0 - k*r;
+    if ($("cHeight").checked){
+      ctx.setLineDash([4,4]); ctx.strokeStyle = "#2b7de9"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx, BASE); ctx.stroke(); ctx.setLineDash([]);
+      var midY = (by + BASE)/2;
+      if (BASE - by > 34){
+        ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.fillRect(bx + 4, midY - 12, 82, 16);
+        text("h = " + c.h.toFixed(2) + " m", bx + 8, midY, 12, "#2b7de9", "left", "600");
+      }
+    }
+    var f = c.E > 1e-9 ? Math.min(1, c.ke / c.E) : 0;
+    var col = "rgb(" + Math.round(lerp(43,240,f)) + "," + Math.round(lerp(125,140,f)) + "," + Math.round(lerp(233,26,f)) + ")";
+    ctx.beginPath(); ctx.arc(bx, by, r, 0, 6.283);
+    ctx.fillStyle = col; ctx.fill();
+    ctx.strokeStyle = "#1d2433"; ctx.lineWidth = 2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(bx - 4, by - 4, 3.5, 0, 6.283); ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.fill();
+    if ($("cVel").checked && Math.abs(S.v) > 0.02){
+      var dir = S.v > 0 ? 1 : -1, len = Math.min(110, Math.abs(S.v)*8 + 8);
+      arrow(bx, by, bx + dir*k*len, by - dir*d*k*len, "#1f9d55");
+      text("v=" + Math.abs(S.v).toFixed(2) + " m/s", bx + dir*k*len*0.5, by - dir*d*k*len*0.5 - 14, 12, "#1f9d55", "center", "600");
+    }
+  }
+
+  function drawBars(c){
+    var bx0 = 742, bw = 48, gap = 14, top = 70, bot = 380, hgt = bot - top;
+    ctx.fillStyle = "#f7f9fc"; ctx.fillRect(722, 20, 262, 388);
+    ctx.strokeStyle = "#dde2ec"; ctx.lineWidth = 1; ctx.strokeRect(722.5, 20.5, 262, 388);
+    text("能量長條圖（J）", 853, 42, 14, "#1d2433", "center", "700");
+    var Emax = Math.max(c.E0, 1e-6)*1.05;
+    var items = [
+      ["位能","PE", c.pe, "#2b7de9"],
+      ["動能","KE", c.ke, "#f08c1a"],
+      ["力學能","PE+KE", c.E, "#2fa84f"],
+      ["熱損","Q", c.Q, "#8a8f98"]
+    ];
+    ctx.strokeStyle = "#999"; ctx.beginPath(); ctx.moveTo(730, bot + 0.5); ctx.lineTo(978, bot + 0.5); ctx.stroke();
+    // 初始力學能參考線
+    var y0 = bot - hgt*(c.E0/Emax);
+    ctx.setLineDash([5,4]); ctx.strokeStyle = "#2fa84f"; ctx.beginPath();
+    ctx.moveTo(730, y0); ctx.lineTo(978, y0); ctx.stroke(); ctx.setLineDash([]);
+    text("初始 E = " + c.E0.toFixed(1), 976, y0 - 4, 11, "#2fa84f", "right");
+    for (var i = 0; i < items.length; i++){
+      var it = items[i], x = bx0 + i*(bw + gap);
+      var bh = Math.max(0, Math.min(hgt, hgt*(it[2]/Emax)));
+      ctx.fillStyle = it[3]; ctx.fillRect(x, bot - bh, bw, bh);
+      text(it[2].toFixed(1), x + bw/2, bot - bh - 5, 12, "#1d2433", "center", "700");
+      text(it[0], x + bw/2, bot + 16, 12, "#1d2433", "center");
+      text(it[1], x + bw/2, bot + 29, 10, "#667085", "center");
+    }
+  }
+
+  function drawGraph(c){
+    var gx = 80, gy = 468, gw = 880, gh = 90;
+    text("能量–時間圖（藍：PE　橘：KE　綠：PE+KE）", 40, 450, 13, "#1d2433", "left", "700");
+    ctx.fillStyle = "#fafbfd"; ctx.fillRect(gx, gy, gw, gh);
+    ctx.strokeStyle = "#cfd6e4"; ctx.lineWidth = 1; ctx.strokeRect(gx + .5, gy + .5, gw, gh);
+    var Emax = Math.max(c.E0, 1e-6)*1.05;
+    var t1 = Math.max(10, S.t), t0 = t1 - 10;
+    // 刻度
+    for (var tk = Math.ceil(t0/2)*2; tk <= t1 + 1e-9; tk += 2){
+      var X = gx + gw*(tk - t0)/10;
+      ctx.strokeStyle = "#e6eaf2"; ctx.beginPath(); ctx.moveTo(X, gy); ctx.lineTo(X, gy + gh); ctx.stroke();
+      text(tk + " s", X, gy + gh + 13, 10, "#667085", "center");
+    }
+    text("0", gx - 6, gy + gh + 3, 10, "#667085", "right");
+    text(Emax.toFixed(0), gx - 6, gy + 8, 10, "#667085", "right");
+    text("J", gx - 6, gy + gh/2, 10, "#667085", "right");
+    function line(key, color, extra){
+      ctx.beginPath(); var started = false;
+      for (var i = 0; i < hist.length; i++){
+        var p = hist[i]; if (p.t < t0) continue;
+        var v = (extra ? p.pe + p.ke : p[key]) * P.m;
+        var x = gx + gw*(p.t - t0)/10, y = gy + gh - gh*Math.min(1, Math.max(0, v/Emax));
+        if (!started){ ctx.moveTo(x,y); started = true; } else ctx.lineTo(x,y);
+      }
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+    }
+    line("pe", "#2b7de9"); line("ke", "#f08c1a"); line(null, "#2fa84f", true);
+  }
+
+  function draw(){
+    var c = cur();
+    ctx.clearRect(0, 0, W, H_PX);
+    // 背景天空
+    var sky = ctx.createLinearGradient(0, 0, 0, BASE);
+    sky.addColorStop(0, "#eef5ff"); sky.addColorStop(1, "#ffffff");
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, 428);
+    drawTrack();
+    drawMarkers();
+    drawBall(c);
+    drawBars(c);
+    text("t = " + S.t.toFixed(2) + " s　　m = " + P.m.toFixed(1) + " kg　　g = " + P.g.toFixed(2) + " m/s²" +
+         (P.mu > 0 ? "　　μ = " + P.mu.toFixed(2) : ""), 14, 20, 13, "#1d2433", "left", "600");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 430, W, 150);
+    if ($("cGraph").checked) drawGraph(c);
+    else text("（能量–時間圖已隱藏）", 40, 470, 13, "#999");
+    // 即時數據
+    $("lT").textContent = S.t.toFixed(2);
+    $("lX").textContent = S.x.toFixed(1);
+    $("lH").textContent = c.h.toFixed(2);
+    $("lV").textContent = Math.abs(S.v).toFixed(2);
+    $("lPE").textContent = c.pe.toFixed(1);
+    $("lKE").textContent = c.ke.toFixed(1);
+    $("lE").textContent = c.E.toFixed(1);
+    $("lQ").textContent = c.Q.toFixed(1);
+  }
+
+  /* ---------- 動畫迴圈 ---------- */
+  var last = performance.now();
+  function loop(now){
+    var dt = Math.min(0.05, (now - last)/1000); last = now;
+    if (S.running) advance(dt*P.ts);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  /* ---------- 控制項 ---------- */
+  function fullReset(pause){
+    resetSim(); meas = MARK_X.map(function(){ return null; });
+    if (pause) setRunning(false);
+    updateTable();
+  }
+  $("btnRun").onclick = function(){ setRunning(!S.running); };
+  $("btnStep").onclick = function(){ setRunning(false); advance(0.1); };
+  $("btnReset").onclick = function(){ fullReset(true); };
+  $("btnClear").onclick = function(){ meas = MARK_X.map(function(){ return null; }); updateTable(); };
+
+  $("sM").oninput = function(){ P.m = parseFloat(this.value); $("oM").textContent = P.m.toFixed(1); updateTable(); };
+  function setG(v){
+    P.g = v; $("oG").textContent = v.toFixed(2); $("sG").value = v;
+    var sel = $("selG"), match = false;
+    for (var i = 0; i < sel.options.length; i++) if (Math.abs(parseFloat(sel.options[i].value) - v) < 1e-6){ sel.selectedIndex = i; match = true; }
+    fullReset(true);
+  }
+  $("sG").oninput = function(){ setG(parseFloat(this.value)); };
+  $("selG").onchange = function(){ setG(parseFloat(this.value)); };
+  $("sMu").oninput = function(){ P.mu = parseFloat(this.value); $("oMu").textContent = P.mu.toFixed(2); };
+  function setRelx(x){
+    P.relx = Math.max(0.3, Math.min(19.7, x));
+    $("sX").value = P.relx; $("oX").textContent = P.relx.toFixed(1);
+    fullReset(true);
+  }
+  $("sX").oninput = function(){ setRelx(parseFloat(this.value)); };
+  $("sT").oninput = function(){ P.ts = parseFloat(this.value); $("oT").textContent = P.ts.toFixed(1); };
+
+  // 在軌道區域點擊／拖曳以設定釋放位置
+  var dragging = false;
+  function pointerToX(e){
+    var rect = cv.getBoundingClientRect();
+    var px_ = (e.clientX - rect.left) * (W / rect.width);
+    var py_ = (e.clientY - rect.top) * (H_PX / rect.height);
+    if (py_ > 430) return null;
+    return (px_ - X0)/SC;
+  }
+  cv.addEventListener("pointerdown", function(e){
+    var x = pointerToX(e); if (x === null) return;
+    dragging = true; cv.setPointerCapture(e.pointerId); setRelx(x);
+  });
+  cv.addEventListener("pointermove", function(e){
+    if (!dragging) return;
+    var x = pointerToX(e); if (x !== null) setRelx(x);
+  });
+  cv.addEventListener("pointerup", function(){ dragging = false; });
+  cv.addEventListener("pointercancel", function(){ dragging = false; });
+
+  /* ---------- 啟動 ---------- */
+  fullReset(true);
+  requestAnimationFrame(function(t){ last = t; requestAnimationFrame(loop); });
+})();
+</script>
+</body>
+</html>
